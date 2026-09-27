@@ -35,9 +35,12 @@ import type { RenderBlock } from '../../types/render-blocks';
 const DEBOUNCE_MS = 50;
 
 function kindColor(kind: RenderBlock['kind']): string {
-  if (kind === 'path')      return '#7c3aed';
-  if (kind === 'immediate') return '#0891b2';
-  return '#374151';
+  return `var(--kind-${kind})`;
+}
+
+/** Ruler spacing: a power of ten that gives at most ~100 ticks across the track. */
+function tickEvery(max: number): number {
+  return 10 ** Math.max(1, Math.ceil(Math.log10(Math.max(1, max) / 100)));
 }
 
 export function TimelineSlider() {
@@ -101,19 +104,41 @@ export function TimelineSlider() {
     ? 'LIVE'
     : `Step ${sliderValue + 1} / ${commandCount}`;
 
+  const width = Math.max(4, String(commandCount).length);
+  const pad   = (n: number) => String(n).padStart(width, '0');
+  const tick  = tickEvery(max);
+
+  // Executed range shading + ruler spacing, as percentages of the track
+  const trackStyle = {
+    '--pos':  max > 0 ? `${(sliderValue / max) * 100}%` : '0%',
+    '--tick': max > 0 ? `${(tick / max) * 100}%` : '100%',
+  } as React.CSSProperties;
+
   return (
     <div className="timeline-bar" role="group" aria-label="Timeline scrubber">
-      <span className="timeline-bar__label">TIMELINE</span>
+      <div className="timeline-bar__readout" aria-live="polite" aria-atomic="true">
+        <span className={`timeline-bar__label${isLive ? '' : ' timeline-bar__label--replay'}`}>
+          {isLive ? 'live' : 'replay'}
+        </span>
+        {commandCount > 0 ? (
+          <>
+            <output className="timeline-bar__step">{pad(sliderValue + 1)}</output>
+            <span className="timeline-bar__total">/ {pad(commandCount)} cmd</span>
+          </>
+        ) : (
+          <output className="timeline-bar__step timeline-bar__step--idle">{pad(0)}</output>
+        )}
+      </div>
 
       <div className="timeline-bar__track">
         {/* Block-boundary tick marks */}
         {ticks.length > 0 && max > 0 && (
           <div className="timeline-bar__markers" aria-hidden="true">
-            {ticks.map((tick) => (
+            {ticks.map((t) => (
               <span
-                key={tick.id}
+                key={t.id}
                 className="timeline-bar__tick"
-                style={{ left: tick.left, backgroundColor: tick.color }}
+                style={{ left: t.left, backgroundColor: t.color }}
               />
             ))}
           </div>
@@ -122,6 +147,7 @@ export function TimelineSlider() {
         <input
           type="range"
           className="timeline-slider"
+          style={trackStyle}
           min={0}
           max={max}
           value={sliderValue}
@@ -132,16 +158,11 @@ export function TimelineSlider() {
           aria-label={`Timeline — ${stepLabel}`}
           aria-valuetext={stepLabel}
         />
-      </div>
 
-      <div className="timeline-bar__counter" aria-live="polite" aria-atomic="true">
-        {commandCount > 0 ? (
-          isLive
-            ? <><span>{commandCount}</span> cmds</>
-            : <><span>{sliderValue + 1}</span>&thinsp;/&thinsp;<span>{commandCount}</span></>
-        ) : (
-          <span style={{ color: 'var(--text-muted)' }}>—</span>
-        )}
+        <div className="timeline-bar__scale" aria-hidden="true">
+          <span>{isLive ? 'not replaying' : `re-executed cmd 0 → ${sliderValue}`}</span>
+          <span>tick = {tick} cmd</span>
+        </div>
       </div>
     </div>
   );

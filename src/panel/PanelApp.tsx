@@ -71,30 +71,38 @@ export function PanelApp() {
       <TimelineSlider />
 
       {/* Row 3 — main content */}
-      <div className="panel-main">
+      <main className="panel-main">
         {/* Col 1: block list sidebar */}
-        <div className="block-list-pane">
-          <div className="block-list-pane__header">
-            <span>Render Blocks</span>
-            <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-              {renderBlocks.length}
-            </span>
+        <section className="pane" aria-label="Render blocks">
+          <div className="pane__header">
+            <span>Render blocks</span>
+            <span className="pane__meta">{renderBlocks.length}</span>
           </div>
-          {hasContent ? <BlockList /> : <EmptyState isAnalysing={recordingStatus === 'recording'} />}
-        </div>
+          {hasContent ? <BlockList /> : (
+            <EmptyState>
+              Commands are captured and replayable from the timeline, but no
+              parser groups them into render blocks yet, so this list stays empty.
+            </EmptyState>
+          )}
+        </section>
 
         {/* Col 2: replay canvas */}
-        <div className="replay-pane">
-          <div className="replay-pane__header">Replay Canvas</div>
+        <section className="pane" aria-label="Replay canvas">
+          <div className="pane__header">Replay canvas</div>
           <ReplayCanvas portRef={portRef} />
-        </div>
+        </section>
 
         {/* Col 3: state inspector */}
-        <div className="inspector-pane">
-          <div className="inspector-pane__header">Context State</div>
-          <StateInspector />
-        </div>
-      </div>
+        <section className="pane" aria-label="Context state">
+          <div className="pane__header">Context state</div>
+          {hasContent ? <StateInspector /> : (
+            <EmptyState>
+              Context-state snapshots are attached to render blocks. With no
+              block parser, there is no snapshot to inspect.
+            </EmptyState>
+          )}
+        </section>
+      </main>
     </div>
   );
 }

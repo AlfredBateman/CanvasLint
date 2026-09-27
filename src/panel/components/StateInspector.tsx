@@ -159,10 +159,7 @@ export function StateInspector() {
 
   if (selectedBlockId === null || selectedBlockState === null) {
     return (
-      <div className="inspector-pane__empty">
-        <div className="inspector-pane__empty-icon" aria-hidden="true">🎨</div>
-        <div>Select a block to inspect its context state</div>
-      </div>
+      <p className="inspector-pane__empty">Select a block to inspect its context state.</p>
     );
   }
 
