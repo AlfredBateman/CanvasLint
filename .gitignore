@@ -3,3 +3,9 @@ dist/
 *.local
 .DS_Store
 Thumbs.db
+
+# scratch/debug output, not source
+lint.txt
+ts_errors.log
+ts_errors.txt
+project_structure.txt
