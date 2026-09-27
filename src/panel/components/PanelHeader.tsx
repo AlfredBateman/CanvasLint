@@ -12,10 +12,10 @@ interface PanelHeaderProps {
 }
 
 const CONNECTION_LABEL: Record<ConnectionStatus, string> = {
-  connecting:   '⏳ Connecting…',
-  connected:    '● Connected',
-  disconnected: '○ Disconnected',
-  error:        '✕ Error',
+  connecting:   '[ connecting ]',
+  connected:    '[ connected ]',
+  disconnected: '[ disconnected ]',
+  error:        '[ link error ]',
 };
 
 export function PanelHeader({
@@ -32,7 +32,7 @@ export function PanelHeader({
   return (
     <header className="panel-header">
       <div className="panel-header__brand">
-        <span className="panel-header__logo" aria-hidden="true">⬡</span>
+        <img className="panel-header__logo" src="/assets/icon16.png" alt="" />
         <span className="panel-header__title">CanvasLint</span>
         <span
           className={`panel-header__conn panel-header__conn--${connectionStatus}`}
@@ -44,41 +44,34 @@ export function PanelHeader({
       </div>
 
       <div className="panel-header__stats">
+        <span className={`stat${errorCount > 0 ? ' stat--fault' : ''}`}>err <b>{errorCount}</b></span>
+        <span className={`stat${warningCount > 0 ? ' stat--fault' : ''}`}>warn <b>{warningCount}</b></span>
         {bufferHasWrapped && (
-          <span className="badge badge--warning" title="Circular buffer wrapped — oldest commands dropped">
-            Buffer full
+          <span className="stat stat--fault" title="Circular buffer wrapped — oldest commands dropped">
+            buffer wrapped
           </span>
-        )}
-        {errorCount > 0 && (
-          <span className="badge badge--error">{errorCount} error{errorCount !== 1 ? 's' : ''}</span>
-        )}
-        {warningCount > 0 && (
-          <span className="badge badge--warning">{warningCount} warning{warningCount !== 1 ? 's' : ''}</span>
-        )}
-        {errorCount === 0 && warningCount === 0 && !bufferHasWrapped && (
-          <span className="badge badge--ok">All clear</span>
         )}
       </div>
 
       <div className="panel-header__actions">
         <button
-          className={`btn-run ${isAnalysing ? 'btn-run--active' : ''}`}
+          className={`btn${isAnalysing ? '' : ' btn--rec'}`}
           onClick={onRunAnalysis}
           disabled={!isConnected}
           aria-label={isAnalysing ? 'Pause recording' : 'Start recording'}
           title={isAnalysing ? 'Pause recording' : 'Start recording'}
         >
-          {isAnalysing ? '⏸ Pause' : '▶ Record'}
+          {isAnalysing ? '■ Pause' : '● Rec'}
         </button>
 
         <button
-          className="btn-reset"
+          className="btn"
           onClick={onHardReset}
           disabled={!isConnected}
           aria-label="Hard reset — clear buffer and resync"
           title="Hard Reset & Resync (clears all captured commands)"
         >
-          ↺ Reset
+          Reset
         </button>
       </div>
     </header>

@@ -12,13 +12,18 @@
  * A future improvement would let the user toggle between "fit" and "1:1" modes.
  *
  * ── Live mode overlay ─────────────────────────────────────────────────────────
- * When cursor is null (live mode) the canvas is empty and we show a ghost text
- * "Drag the slider to replay". When replaying, a spinner overlay appears.
+ * When cursor is null (live mode) the canvas is empty and we say how many
+ * commands can be replayed. While replaying, an "executing" tag shows.
  */
 
 import { useRef, useEffect } from 'react';
 import { useReplayEngine }  from '../useReplayEngine';
-import { usePanelStore, selectTimelineCursor, selectIsReplaying } from '../usePanelStore';
+import {
+  usePanelStore,
+  selectTimelineCursor,
+  selectIsReplaying,
+  selectCommandCount,
+} from '../usePanelStore';
 
 interface ReplayCanvasProps {
   portRef: React.RefObject<chrome.runtime.Port | null>;
@@ -30,6 +35,7 @@ export function ReplayCanvas({ portRef }: ReplayCanvasProps) {
 
   const cursor      = usePanelStore(selectTimelineCursor);
   const isReplaying = usePanelStore(selectIsReplaying);
+  const commandCount = usePanelStore(selectCommandCount);
 
   // Wire the replay engine — it subscribes to cursor changes and drives the canvas
   useReplayEngine(canvasRef, portRef);
@@ -64,21 +70,27 @@ export function ReplayCanvas({ portRef }: ReplayCanvasProps) {
         role="img"
       />
 
-      {/* Live mode ghost overlay */}
+      {/* Live mode: nothing replayed yet — the canvas is intentionally blank */}
       {isLive && (
-        <div className="replay-canvas__overlay replay-canvas__overlay--live" aria-hidden="true">
-          <span className="replay-canvas__ghost-icon">⏸</span>
-          <span className="replay-canvas__ghost-text">
-            Drag the timeline to replay
-          </span>
+        <div className="replay-canvas__overlay" aria-hidden="true">
+          {commandCount === 0 ? (
+            <>
+              <strong>No commands captured</strong>
+              <span>Record, then draw on the inspected page.</span>
+              <span>The count refreshes only when the panel reconnects.</span>
+            </>
+          ) : (
+            <>
+              <strong>{commandCount} commands captured</strong>
+              <span>Scrub the timeline to re-execute them from command 0.</span>
+            </>
+          )}
         </div>
       )}
 
-      {/* Replay-in-progress spinner */}
+      {/* Replay in progress */}
       {isReplaying && (
-        <div className="replay-canvas__overlay replay-canvas__overlay--busy" aria-live="polite" aria-label="Replaying…">
-          <span className="spinner" />
-        </div>
+        <span className="replay-canvas__busy" aria-live="polite">[ executing ]</span>
       )}
     </div>
   );

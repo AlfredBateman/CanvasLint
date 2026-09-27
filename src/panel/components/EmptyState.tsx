@@ -1,23 +1,15 @@
 // Using React 18 JSX transform
 
-interface EmptyStateProps {
-  isAnalysing: boolean;
-}
-
-export function EmptyState({ isAnalysing }: EmptyStateProps) {
+/**
+ * Placeholder for panel columns whose data source doesn't exist yet
+ * (the render-block parser — see README, "Known limitations").
+ */
+export function EmptyState({ children }: { children: React.ReactNode }) {
   return (
-    <div className="empty-state">
-      <div className="empty-state__icon" aria-hidden="true">
-        {isAnalysing ? '⟳' : '⬡'}
-      </div>
-      <p className="empty-state__title">
-        {isAnalysing ? 'Waiting for canvas rendering…' : 'No commands recorded'}
-      </p>
-      <p className="empty-state__subtitle">
-        {isAnalysing
-          ? 'Interact with the host page to generate canvas rendering operations.'
-          : 'Click "Record" to intercept rendering commands.'}
-      </p>
+    <div className="stub">
+      <span className="stub__flag">Not implemented</span>
+      <p>{children}</p>
+      <span className="stub__ref">See README → Known limitations</span>
     </div>
   );
 }

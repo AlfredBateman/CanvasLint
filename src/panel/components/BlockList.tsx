@@ -54,14 +54,6 @@ export function BlockList() {
     }
   }
 
-  if (renderBlocks.length === 0) {
-    return (
-      <div className="block-list" style={{ alignItems: 'center', justifyContent: 'center', display: 'flex', height: '100%' }}>
-        <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>No blocks yet</span>
-      </div>
-    );
-  }
-
   return (
     <div className="block-list" role="list" aria-label="Render block timeline">
       {renderBlocks.map((block, i) => {
