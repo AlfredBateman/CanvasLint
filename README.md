@@ -12,6 +12,18 @@ from an earlier scaffold this project was built on top of.
 
 ---
 
+## Before / after
+
+The panel was redesigned from a generic dashboard look to an industrial
+telemetry style, with honest empty states instead of placeholder content.
+
+| | Before | After |
+|---|---|---|
+| **Live capture** | ![Before, live capture](docs/screenshots/before-live.png) | ![After, live capture](docs/screenshots/after-live.png) |
+| **Scrubbed to a frame** | ![Before, scrubbed](docs/screenshots/before-scrubbed.png) | ![After, scrubbed](docs/screenshots/after-scrubbed.png) |
+
+---
+
 ## Install / build
 
 Requires Node 18+.
