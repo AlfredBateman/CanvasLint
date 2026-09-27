@@ -1,0 +1,118 @@
+================================================================================
+CANVASLINT PROJECT STATUS AND COMPONENT BREAKDOWN
+================================================================================
+Date: 2026-04-30
+Project: CanvasLint — DevTools Extension for HTML5 Canvas 2D Debugging
+================================================================================
+
+--------------------------------------------------------------------------------
+OVERALL PROJECT COMPLETION STATUS: COMPLETED (CORE MVP)
+--------------------------------------------------------------------------------
+The project has a fully functional capture-and-replay pipeline. The core engine 
+successfully intercepts Canvas commands, relays them through the background, and 
+allows for pixel-perfect deterministic replay in the DevTools panel.
+
+Status of Key Phases:
+[X] Phase 1: Prototype Interception & Injection (MAIN world)
+[X] Phase 2: Message Passing Infrastructure (Relay Ports)
+[X] Phase 3: Background Buffer Management (Circular 10k Buffer)
+[X] Phase 4: Deterministic Replay Engine & React UI
+[/] Phase 5: Logical Block Parser (Infrastructure in place, heuristics stubbed)
+
+--------------------------------------------------------------------------------
+COMPONENT BREAKDOWN & INTERNAL WORKINGS
+--------------------------------------------------------------------------------
+
+1. THE INJECTION SCRIPT (src/inject/index.ts)
+   Role: MAIN world proxy for CanvasRenderingContext2D.
+   - Internal Working:
+     - Prototype Interception: Iterates through CanvasRenderingContext2D.prototype
+       methods and descriptors to wrap them.
+     - Identity Tracking: Uses a WeakMap (canvasIds) to track individual canvas
+       elements without memory leaks.
+     - Reference Serialization: Converts non-primitive arguments (images, videos)
+       into SerializedRef tokens with UUIDs and source URLs.
+     - Batching: Collects commands into a micro-queue and flushes once per 
+       animation frame (requestAnimationFrame) to window.postMessage.
+   - Core Functions:
+     - getCanvasId(canvas): Maps canvas instances to numeric IDs.
+     - getSerializedRef(obj): Creates serializable tokens for complex assets.
+     - flushQueue(): Dispatches the command batch to the content script.
+     - enqueue(command): Adds commands to the batch with eager-flush (500 limit).
+     - save/restore handlers: Explicitly tracks stack depth to detect drift.
+
+2. THE CONTENT SCRIPT (src/content/index.ts)
+   Role: Secure relay between host page and background.
+   - Internal Working:
+     - Lazy Injection: Uses a MutationObserver (checkForCanvas) to detect 
+       <canvas> elements and inject the proxy only when needed.
+     - Port Management: Maintains a chrome.runtime.Port with exponential back-off
+       reconnection logic to handle service worker sleep/wake cycles.
+     - Batch Forwarding: Buffers command batches (up to 200) if the background 
+       port is temporarily disconnected.
+   - Core Functions:
+     - openRelayPort(): Initializes connection to background.
+     - sendBatch(msg): Forwards data from MAIN world to the worker.
+     - injectProxyScript(): Dynamically adds the injection <script> tag.
+
+3. THE BACKGROUND WORKER (src/background/index.ts)
+   Role: Global state coordinator and buffer manager.
+   - Internal Working:
+     - Circular Buffer: Manages a fixed-size (10,000) command history using 
+       the CircularBuffer data structure.
+     - Throttled Sync: Flushes new block metadata to the panel at 4Hz 
+       (250ms interval) to keep the React UI responsive.
+     - Tab Isolation: Port registry maps tabId to DevTools ports.
+   - Core Functions:
+     - broadcastToAllPanels(msg): Syncs state across DevTools windows.
+     - handleHardReset(tabId): Clears buffers and notifies observers.
+     - broadcastControlToContent(status): Passes recording toggles to pages.
+
+4. THE REPLAY ENGINE (src/panel/replayEngine.ts)
+   Role: Deterministic command executor.
+   - Internal Working:
+     - Determinism: Replays commands from step 0 to step N on every update to 
+       reconstruct the exact visual state.
+     - Asset Resolution: Resolves SerializedRefs back to HTMLImageElements via 
+       an async image cache (URL-based).
+     - Context Normalization: Resets the 2D context (transforms, styles, alpha)
+       to default browser states before every execution pass.
+   - Core Functions:
+     - loadImage(url): Asynchronously populates the asset cache.
+     - resetContext(ctx): Wipes and re-initializes context state.
+     - executeCommand(ctx, cmd, issues): Maps recorded JSON to native API calls.
+     - replayCommands(ctx, commands, endIndex): Orchestrates the replay loop.
+
+5. THE REACT STATE & UI (src/panel/usePanelStore.ts / useReplayEngine.ts)
+   Role: High-performance user interface.
+   - Internal Working:
+     - Zustand Store: Uses selective subscriptions (subscribeWithSelector) to 
+       trigger replays and UI updates without full React re-renders.
+     - Slice Requesting: Fetches large raw command arrays from the background 
+       only when a replay is triggered, keeping the UI state lightweight.
+     - Timeline Debouncing: Throttles slider movements (50ms) to prevent 
+       blocking the execution thread during rapid scrubbing.
+   - Core Functions:
+     - useReplayEngine: Hook that subscribes to the timeline cursor and 
+       drives the replay loop outside the React render cycle.
+     - applyDelta/applySnapshot: Store actions for merging worker data.
+     - setTimelineCursor: Action that initiates a replay sequence.
+
+--------------------------------------------------------------------------------
+DATA STRUCTURES (src/types/*)
+--------------------------------------------------------------------------------
+- CanvasCommand: Represents a single native API call with timestamp and index.
+- RenderBlock: A logical grouping of commands (e.g., path, text, drawImage).
+- CircularBuffer: A memory-safe container for the 10,000 item limit.
+- SerializedRef: A handle for assets that cannot be structured-cloned directly.
+
+--------------------------------------------------------------------------------
+KNOWN CONSTRAINTS / NEXT STEPS
+--------------------------------------------------------------------------------
+- Logical Block Parser: Currently appends new blocks as received. Advanced 
+  heuristics (e.g., path auto-grouping) are prepared in the data structure 
+  but require additional logic in background/index.ts (Phase 5).
+- WebGL Support: Currently limited to 2D Context.
+- Video Frame Stability: Replay uses currentSrc; seeking in videos during 
+  replay is not yet synchronized to command timestamps.
+================================================================================

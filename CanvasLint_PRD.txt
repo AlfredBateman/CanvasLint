@@ -1,0 +1,135 @@
+================================================================================
+CANVAS-LINT: PRODUCT REQUIREMENTS DOCUMENT & TECHNICAL SPECIFICATION
+================================================================================
+Document Type: Technical Specification (Academic & PM-Grade)
+Subject: Canvas-Lint (HTML5 2D Rendering Debugger)
+Date: 2026-04-03
+================================================================================
+
+--------------------------------------------------------------------------------
+1. EXECUTIVE SUMMARY & ACADEMIC OBJECTIVES
+--------------------------------------------------------------------------------
+Canvas-Lint is a specialized Google Chrome browser extension designed to demystify and debug HTML5 2D canvas rendering. By intercepting calls to the `window.CanvasRenderingContext2D` API, it converts the typically opaque "black box" of canvas rendering into a replayable, inspectable timeline within the Chrome DevTools panel.
+
+Academic Objectives:
+* Advanced API Interception: Demonstrate safe, high-performance prototype overriding within the unprivileged MAIN browser execution world.
+* Concurrent Message Passing: Implement reliable, low-overhead inter-world communication (MAIN -> ISOLATED -> BACKGROUND -> DEVTOOLS) using batched mechanisms and long-lived `chrome.runtime.Port` connections.
+* State Management & Determinism: Prove the viability of "computation-over-memory" debugging by regenerating exact canvas states sequentially, rather than storing massive multi-megabyte bitmap arrays.
+
+--------------------------------------------------------------------------------
+2. TARGET AUDIENCE & USER STORIES
+--------------------------------------------------------------------------------
+Target Audience: Web developers, specific game developers, and UX engineers heavily utilizing HTML5 `<canvas>` for animations, charts, or games.
+
+User Stories:
+* As a web game developer, I want to step backward through the rendering pipeline frame-by-frame so I can see exactly which specific `fillRect` or `drawImage` operation caused a layering glitch.
+* As an animation engineer, I want to inspect the global alpha, transform matrices, and fill colors at step X to verify my code logically progressed successfully.
+* As a technical lead, I require the debugging tool to have a negligible impact on host performance so it doesn't mask the very frame-drops my team is attempting to solve.
+
+--------------------------------------------------------------------------------
+3. DETAILED SYSTEM ARCHITECTURE
+--------------------------------------------------------------------------------
+The architecture relies on 4 primary pillars designed to operate securely within Manifest V3 strictures.
+
+A. The Injection Script (Prototype Overrider)
+Injected dynamically into the `MAIN` page execution context only upon `<canvas>` detection. It aggressively overwrites all prototype methods natively available to the Canvas rendering context. It logs the method invoked, captures arguments, and proxies the call immediately to the native browser API to ensure native visual rendering integrity. To maintain peak 60FPS performance, complex variables are shallow-copied and batched into arrays drained via `requestAnimationFrame`.
+
+B. The Content Script (Message Relay)
+Executing inside the `ISOLATED` world. It listens for `window.postMessage` payloads originating from the `MAIN` world (thereby bypassing sandbox security). It does absolutely zero processing. It establishes a `chrome.runtime.Port` connection to the Background Service Worker and acts strictly as a high-speed, secure, fire-and-forget data relay.
+
+C. The Background Worker (Buffer Manager)
+The central nervous system. Consumes raw JSON packets from the content script and manages the core 10,000-item circular array buffer. It operates as a continuous state-engine syncing connected React DevTools panels via throttle-based (250ms) interval flushes to prevent React UI thrashing. 
+
+D. The DevTools UI Panel 
+A React-Zustand single-page application loaded natively into Chrome DevTools. Features the isolated Replay Canvas, algorithmic block UI list, and the visual timeline slider. It communicates independently via custom background port requests to scrub without locking the UI thread.
+
+=== TEXT-BASED DATA FLOW DIAGRAM ===
+[Host Webpage] 
+  |> calls ctx.fillRect()
+  V
+[MAIN World: Injection Script]
+  |> Stores {method: 'fillRect', timestamp, args} in batchQueue
+  |> requestAnimationFrame Drains -> window.postMessage()
+  V
+[ISOLATED World: Content Script]
+  |> Validates Sentinel Flag -> port.postMessage()
+  V
+[MV3 Worker: Background Script]
+  |> Pushes to CircularBuffer<Command>
+  |> Throttle Flush (4Hz) -> port.postMessage()
+  V
+[EXTENSION UI: DevTools Panel React App]
+  |> Zustand State Ingests Metadata Delta
+  |> User Drags Timeline Slider -> sends REQUEST_COMMAND_SLICE
+  V
+[ISOLATED REPLAY CANVAS: Execution Engine]
+  |> Wipes Replay Canvas -> Re-executes Slice Commands [0...N]
+
+--------------------------------------------------------------------------------
+4. FEATURE SPECIFICATIONS & EDGE CASES
+--------------------------------------------------------------------------------
+A. Deterministic Timeline Replay
+Instead of storing screenshots per frame (which crashes the V8 garbage collector), the slider re-runs the mathematical commands chronologically.
+* Replay Strategy Trade-off: Trading CPU cycles during a scrubber drag for extreme operational memory efficiency. CPU is cheap during a developer's manual drag sequence; 150MB memory is an absolute maximum limit dictated by browser extension policy.
+
+B. Logical Command Grouping (Render Blocks)
+Because flat arrays of 10,000 commands are unreadable, the script logically batches elements.
+* Heuristic: A sequence starting with `beginPath()` and strictly closing with a geometric commitment like `fill()` or `stroke()` is automatically bounded and defined as one atomic Render Block.
+
+C. Live State Inspector
+Calculates and echoes real-time properties.
+* Edge Case - Stack Drift: Canvas states utilize `save()` and `restore()`. If a host page mismatches these, Canvas-Lint flags a "stack drift" error and pushes a red Replay Warning indicator to developers.
+
+D. Hard Reset & Resync
+A user-facing "Reset" forces a background buffer purge and `PAGE_NAVIGATED` hard resets to kill the `save()` stack.
+
+Edge Cases Covered:
+* Rapid Resizing: Handled by HTML `ResizeObserver` syncing the Replay Canvas bitmap to physical CSS pixels using native `devicePixelRatio`.
+* Unsupported WebGL: If WebGL uses `<canvas>`, the interception script explicitly ignores `getContext('webgl')` — it cannot lint it.
+* Iframe Contexts: Extension ignores iframes by explicitly enforcing `all_frames: false` in injection policies.
+
+--------------------------------------------------------------------------------
+5. DATA STRUCTURES
+--------------------------------------------------------------------------------
+Below is the definitive JSON representation for intercepted network data:
+
+A. The "Draw Command" Payload
+{
+  "method": "fillRect", // Or 'set:fillStyle', 'drawImage:3'
+  "args": [0, 0, 1920, 1080], // Shallow serialized array
+  "timestamp": 1699990145.12, // DOMHighResTimeStamp
+  "index": 45091, // Absolute logical timeline increment
+  "canvasId": 0, // Reference to physical canvas
+  "value"?: "#FF0000", // Used exclusively for setter overrides
+  "saveDepthAfter"?: 3, // Calculated depth tracking
+  "stackDrift"?: false // Heuristic boolean calculation
+}
+
+B. The "Render Block" Segment
+{
+  "id": "block-94a2b", 
+  "kind": "path", // "path", "image", "text", "clear"
+  "startLogical": 45010, // Maps to Buffer Index
+  "endLogical": 45091,
+  "commandCount": 81,
+  "summary": "Path (81 ops)"
+}
+
+--------------------------------------------------------------------------------
+6. PERFORMANCE METRICS & SUCCESS CRITERIA
+--------------------------------------------------------------------------------
+* Host Framerate Impact: Must generate less than a 15% execution drop on the parent webpage handling 500+ draw commands per second.
+* Memory Consumption: The strict 10,000 item circular buffer fundamentally guarantees memory usage remains strictly under 150MB active RAM during intense recording phases.
+* UI Playback Integrity: The isolated Replay Canvas must process a minimum of 200 commands in sub-100ms when scrubbing to yield a perfectly smooth UX in the DevTools window pane.
+
+--------------------------------------------------------------------------------
+7. FUTURE SCOPE & KNOWN LIMITATIONS
+--------------------------------------------------------------------------------
+Known Limitations:
+* Asynchronous Assets: Replaying `drawImage` natively mandates re-loading Image blobs. CORS limitations on cross-origin image URLs or dynamic canvas-to-canvas rendering paths presently cause skipping (graceful degradation) in the deterministic playback timeline.
+* Deep State Reconstruction: Non-serializable assets like `CanvasGradient` or `Path2D` are swallowed/ignored, generating UI-bound `ReplayWarnings` rather than halting the system.
+
+Future Scope:
+* High-Fidelity Asset Cloning: Implementing a binary Blob caching layer to perfectly resurrect cross-origin images to ensure flawless `drawImage` commands.
+* Visual Diffing Engine: A theoretical implementation of pixel-perfect delta generation highlighting specifically modified pixels between `Block[A]` and `Block[B]`.
+================================================================================

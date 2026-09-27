@@ -1,0 +1,32 @@
+{
+  "name": "canvas-lint",
+  "version": "0.1.0",
+  "description": "CanvasLint — A DevTools browser extension for debugging HTML5 Canvas 2D rendering",
+  "private": true,
+  "scripts": {
+    "dev": "vite build --watch & vite build -c vite.config.content.ts --watch & vite build -c vite.config.inject.ts --watch",
+    "build": "vite build && vite build -c vite.config.content.ts && vite build -c vite.config.inject.ts",
+    "preview": "npm run build && echo 'Load the dist/ folder as an unpacked extension'",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint src --ext .ts,.tsx"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^5.0.12"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.279",
+    "@types/node": "^25.5.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@typescript-eslint/eslint-plugin": "^7.13.1",
+    "@typescript-eslint/parser": "^7.13.1",
+    "@vitejs/plugin-react": "^4.3.1",
+    "eslint": "^8.57.0",
+    "eslint-plugin-react-hooks": "^4.6.2",
+    "eslint-plugin-react-refresh": "^0.4.7",
+    "typescript": "^5.5.3",
+    "vite": "^5.3.3"
+  }
+}

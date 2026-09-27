@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CanvasLint Demo Page</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #1e1e1e;
+            color: white;
+            font-family: sans-serif;
+            flex-direction: column;
+        }
+        canvas {
+            border: 2px solid #4CAF50;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            background-color: #000;
+        }
+        .controls {
+            margin-top: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>CanvasLint Test Page</h2>
+    <p>Open Chrome DevTools and navigate to the CanvasLint tab to inspect this canvas!</p>
+    
+    <canvas id="myCanvas" width="600" height="400"></canvas>
+    
+    <div class="controls">
+        <button id="toggleBtn">Pause/Resume Animation</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('myCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        let x = canvas.width / 2;
+        let y = canvas.height / 2;
+        let dx = 4;
+        let dy = 4;
+        const radius = 20;
+        
+        let isAnimating = true;
+        let hue = 0;
+
+        function drawBall() {
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+            ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
+            ctx.fill();
+            ctx.closePath();
+        }
+
+        function update() {
+            if (!isAnimating) return;
+
+            // Clear previous frame with a slight fade effect
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            drawBall();
+            
+            if(x + dx > canvas.width - radius || x + dx < radius) {
+                dx = -dx;
+            }
+            if(y + dy > canvas.height - radius || y + dy < radius) {
+                dy = -dy;
+            }
+            
+            x += dx;
+            y += dy;
+            hue = (hue + 1) % 360;
+
+            // Draw some static text to test text capture
+            ctx.fillStyle = 'white';
+            ctx.font = '20px Arial';
+            ctx.fillText('Canvas Debugging!', 20, 30);
+            
+            requestAnimationFrame(update);
+        }
+
+        document.getElementById('toggleBtn').addEventListener('click', () => {
+            isAnimating = !isAnimating;
+            if(isAnimating) update();
+        });
+
+        // Start animation
+        update();
+    </script>
+</body>
+</html>

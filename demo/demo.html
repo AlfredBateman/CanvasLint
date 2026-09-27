@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canvas-Lint Test Bed</title>
+    <style>
+        body {
+            background-color: #1e1e1e;
+            color: white;
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 50px;
+        }
+
+        canvas {
+            border: 2px solid #4CAF50;
+            background-color: #000;
+        }
+
+        button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h2>Canvas-Lint Target Environment</h2>
+    <canvas id="gameCanvas" width="500" height="400"></canvas>
+    <button id="triggerBtn">Trigger Single Frame</button>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        let xPos = 50;
+
+        function drawComplexFrame() {
+            // 1. Clear Canvas (Crucial for timeline replay testing)
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 2. State Management Test (Tests if your proxy handles save/restore)
+            ctx.save();
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            ctx.rotate((Math.PI / 180) * 45);
+            ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
+            ctx.fillRect(-50, -50, 100, 100);
+            ctx.restore(); // If proxy misses this, the next shapes will draw rotated!
+
+            // 3. Path & Primitive Test
+            ctx.beginPath();
+            ctx.arc(xPos, 50, 20, 0, Math.PI * 2);
+            ctx.fillStyle = '#4CAF50';
+            ctx.fill();
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = '#FFF';
+            ctx.stroke();
+
+            // 4. Text Rendering Test
+            ctx.font = '20px Arial';
+            ctx.fillStyle = 'white';
+            ctx.fillText('Canvas-Lint Testing', 10, 380);
+
+            // Increment for the next manual frame trigger
+            xPos = (xPos + 25) % canvas.width;
+        }
+
+        // Draw initial static frame on load
+        drawComplexFrame();
+
+        // Button to trigger manual frames (easiest way to test your timeline UI)
+        document.getElementById('triggerBtn').addEventListener('click', drawComplexFrame);
+
+        /* // Uncomment this later for stress-testing your batching pipeline
+        function animate() {
+             drawComplexFrame();
+             requestAnimationFrame(animate);
+        }
+        animate();
+        */
+    </script>
+</body>
+
+</html>

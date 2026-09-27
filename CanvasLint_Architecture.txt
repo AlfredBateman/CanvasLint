@@ -1,0 +1,132 @@
+================================================================================
+CANVAS-LINT: TECHNICAL ARCHITECTURE & INTERNAL MECHANICS
+================================================================================
+Project: Canvas-Lint
+Type: Manifest V3 Browser DevTools Extension
+Objective: Computational, step-by-step 2D Canvas rendering debugger
+Date Generated: 2026-04-03
+================================================================================
+
+This document outlines the internal mechanics, integration pathways, and structural constraints of the Canvas-Lint extension. The system strictly adheres to a "computation-over-memory" paradigm, re-executing recorded JavaScript commands sequentially rather than storing expensive pixel bitmaps to maintain a strict <150MB memory footprint via a 10,000-command circular buffer.
+
+
+--------------------------------------------------------------------------------
+1. THE INJECTION SCRIPT (Prototype Overrider)
+--------------------------------------------------------------------------------
+Core Function: 
+Acts as the frontline interception layer. It natively overrides the CanvasRenderingContext2D prototype methods and setters inside the host page's MAIN execution world to transparently record every drawing operation.
+
+Inner Workings (The "How"):
+* Prototype Mutation: It enumerates all Canvas 2D methods (e.g., fillRect, bezierCurveTo) and setters (e.g., fillStyle) and replaces them with an interceptor wrapper. The wrapper immediately calls the native function (via `.apply(this, args)`) to guarantee the host page renders precisely as intended, then records the command.
+* Argument Serialization: Any references to HTMLImageElement or HTMLVideoElement are replaced inline by `getSerializedRef()`, assigning a UUID and capturing the object's `src` string so the Replay Engine can resolve and reload it later.
+* State Tracking: Implements a WeakMap-backed save-depth counter. `save()` operations increment the counter, and `restore()` decrements it, allowing the parser to detect stack drift or dangling states.
+* Batching Algorithm: Instead of dispatching distinct messages for every call, it queues commands in memory. A requestAnimationFrame (rAF) hook drains this queue ≤60 times per second to prevent saturation. Eager flushing forces a drain if the queue exceeds 500 commands (MAX_BATCH_SIZE) during synchronous spikes.
+
+Integration & Data Flow:
+* Input: Triggered directly by the host webpage’s native JS execution. 
+* Output: Drained command batches are dispatched specifically via `window.postMessage` tagged with a PAGE_MESSAGE_SENTINEL boolean.
+* Destination: Transported to the Content Script (Isolated World) across the DOM boundary.
+
+Edge Cases & Constraints:
+* Must execute in the MAIN world, otherwise the host scripts bypass the intercepted prototype entirely.
+* Cannot serialize complex references like `CanvasGradient` or `Path2D`; these emit warnings.
+
+
+--------------------------------------------------------------------------------
+2. THE CONTENT SCRIPT (Message Relay)
+--------------------------------------------------------------------------------
+Core Function:
+Functions as a hyper-efficient, secure bridge between the unprivileged MAIN world and the background service worker, isolating the extension's port infrastructure from the host webpage.
+
+Inner Workings (The "How"):
+* Lazy DOM Injection: On startup, it deploys a `MutationObserver`. It only provisions the heavy MAIN-world Injection Script (via `<script src="...">`) the absolute moment an HTMLCanvasElement is detected in the DOM. This respects global `<all_urls>` permission safely without polluting non-canvas webpages.
+* Port Lifecycle Management: Instantiates a long-lived `chrome.runtime.Port` ('content-relay').
+* Back-Off Reconnection: Since Chrome aggressively limits Service Worker lifespans, the Content Script includes a recursive back-off reconnect timer (capped at 8 seconds) anchored to the port's `onDisconnect` event (safely checked against `chrome.runtime.lastError` to suppress browser warnings).
+
+Integration & Data Flow:
+* Input: Listens for `window.addEventListener('message')` from the Injection Script, strictly verifying the custom sentinel flag.
+* Output: Calls `relayPort.postMessage(msg)` to funnel the batches completely unaltered. If the port drops, it queues messages in memory (capped at 200 batches or ~3 seconds of 60FPS data) until the connection secures.
+* Destination: The Background Message Worker.
+
+Edge Cases & Constraints:
+* The script lives in the Isolated World; it cannot touch the JS execution context of the host, hence why it must orchestrate injecting the MAIN world script dynamically.
+
+
+--------------------------------------------------------------------------------
+3. THE BACKGROUND WORKER (Buffer Manager & State Controller)
+--------------------------------------------------------------------------------
+Core Function:
+The global brain of the extension. It consumes incoming rendering messages from all tabs, maintains the heavily constrained history buffer, coordinates UI updates, and serves deterministic "Replay Command Slices."
+
+Inner Workings (The "How"):
+* Port Multiplexing: Handles two independent port types simultaneously: 'content-relay' (from inspected pages) and 'devtools' (from React UIs).
+* Ring Buffer Mechanics: Instantiates a fixed-size CircularBuffer structure capped at exactly 10,000 CanvasCommand objects. When it reaches 10,000, operations mathematically wrap around to overwrite index 0 (`head = (head + 1) % limit`), effectively shedding oldest operations to guarantee a fixed memory ceiling.
+* Throttled Syncing: Instead of suffocating the DevTools panel UI with granular state updates for every command, it accumulates metadata into a `pendingDeltaBlocks` queue and uses a `setInterval` (250ms/4Hz burst) to flush deltas to standard UI subscribers.
+
+Integration & Data Flow:
+* Input: Receives batches from Content Scripts; React control messages from DevTools.
+* Output 1: Sends `WORKER_BLOCKS_DELTA` payload to active DevTool Ports.
+* Output 2: Sends raw `COMMAND_SLICE` binary chunks directly to exactly one React port when explicitly requested.
+
+Edge Cases & Constraints:
+* Must survive continuous MV3 destruction/instantiation cycles. State is maintained inside the background environment, but long pauses can nuke the buffer. Page reloading automatically triggers `PAGE_NAVIGATED` to clear stale buffers.
+
+
+--------------------------------------------------------------------------------
+4. THE DEVTOOLS UI PANEL (React Interface & Timeline Slider)
+--------------------------------------------------------------------------------
+Core Function:
+The Developer UI. Provides a scrubbable timeline interface and logical groupings synced to the background data.
+
+Inner Workings (The "How"):
+* Zustand Store: Adopts a multi-slice Zustand model. Exclusively stores only lightweight metadata (command counts, parse blocks, recording statuses) inside React, explicitly forbidding the storage of the massive 10,000 raw CanvasCommand array inside React's flux cycle.
+* Sub-Render Subscriptions: Leverages `subscribeWithSelector` for the timeline slider position. Because scrubber mutations occur 60 times a second while dragging, bypassing React's reconciliation engine is paramount for performant rendering.
+* Viewport Management: A three-column CSS Grid architecture hosting the logical `BlockList`, the `ReplayCanvas`, and the `StateInspector`.
+
+Integration & Data Flow:
+* Input: `useWorkerPort` hook feeds 4Hz standard delta snaps.
+* Output: Bi-directional control signals (`START_RECORDING`, `PAUSE_RECORDING`).
+* Destination: Sent directly back to Background Worker.
+
+Edge Cases & Constraints:
+* Highly optimized to avoid "render thrashing". Raw execution commands must never trigger a component tree redraw.
+
+
+--------------------------------------------------------------------------------
+5. THE ISOLATED REPLAY CANVAS (Execution Engine)
+--------------------------------------------------------------------------------
+Core Function:
+Operates independently from the React render cycles as a strict, headless command executor. It reconstructs the exact canvas bitmap representation frame-by-frame upon request.
+
+Inner Workings (The "How"):
+* Clean-Slate Reconstruct: The timeline slider triggers execution. Every replay begins by unconditionally wiping the target canvas and resetting all 18 configurable properties (styles, transforms, lines) to standard browser defaults. It aggressively counters dangling save depths using an automated `restore()` while-loop.
+* Native Translation: Implements a giant Javascript switch-case router iterating through `startLogical` to `endLogical` command boundaries. It natively re-executes operations directly over a fresh `<canvas>`.
+* Asynchronous Asset Linking: Because drawn paths rely on images, it operates an internal hashmap `imageCache` resolving serialized UUID assets back into raw HTMLImageElements by firing async fetch operations utilizing the base64/URL snapshot strings emitted initially by the Injection proxy.
+
+Integration & Data Flow:
+* Input: Exclusively demands execution data via `REQUEST_COMMAND_SLICE` round-tripped directly to the background service worker, intercepting `COMMAND_SLICE` payloads.
+* Yields: Pushes warnings sequentially if a serialized argument explicitly fails to execute.
+
+Edge Cases & Constraints:
+* Determinism over Speed: Must execute N operations blindly to retrieve current graphical status. Slices heavier than 100ms yield UI spinners/slow-replay warnings.
+
+
+--------------------------------------------------------------------------------
+6. THE ALGORITHMIC PARSER (Logical Command Grouping / Render Blocks)
+--------------------------------------------------------------------------------
+Core Function:
+Digests the chaotic array of 10,000 flat, raw command operations into discrete, logical, and human-readable components called "Render Blocks."
+
+Inner Workings (The "How"):
+* Iteration Heuristics: Canvas commands do not naturally denote "Objects." The parser loops linearly, creating heuristics: instances of `beginPath()` followed eventually by a `fill()`, `stroke()`, or `clip()` signify unified graphical elements.
+* State Framing: By examining `save()` and `restore()` commands specifically, it generates parent-child hierarchical groupings that isolate complex matrix transformations or clipping paths. 
+* Atomic Grouping: Captures singular draw actions (e.g., `drawImage`, `fillRect`, `clearRect`) and assigns them explicit distinct logical bounds (`startLogical`, `endLogical`).
+
+Integration & Data Flow:
+* Input: Triggered mathematically whenever a batch appends to the circular buffer array. 
+* Output: Produces `RenderBlock` data structures.
+* Destination: Appended to the UI delta cache for asynchronous delivery mapping to the DevTools interfaces.
+
+Edge Cases & Constraints:
+* Continuous stream processing constraints force it to calculate delta diffs continuously rather than re-computing the full 10K array per batch, preventing exponential computational collapse.
+================================================================================
