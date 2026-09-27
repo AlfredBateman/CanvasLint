@@ -37,6 +37,7 @@ import {
   type RelayCommandBatchMessage,
   type PageNavigatedMessage,
 } from '../types/messages';
+import { createBackoff } from '../types/backoff';
 
 // ─── Port Management ─────────────────────────────────────────────────────────
 
@@ -44,14 +45,12 @@ import {
 const pendingQueue: RelayCommandBatchMessage[] = [];
 
 let relayPort: chrome.runtime.Port | null = null;
-let reconnectDelay = 250; // ms, doubles on each failure up to MAX_RECONNECT_DELAY
-const MAX_RECONNECT_DELAY = 8_000;
-let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+const backoff = createBackoff();
 
 function openRelayPort(): void {
   try {
     relayPort = chrome.runtime.connect({ name: CONTENT_RELAY_PORT_NAME });
-    reconnectDelay = 250; // reset back-off on success
+    backoff.reset(); // reset back-off on success
 
     // Flush any commands that arrived while we were reconnecting
     if (pendingQueue.length > 0) {
@@ -64,7 +63,7 @@ function openRelayPort(): void {
     relayPort.onDisconnect.addListener(() => {
       void chrome.runtime.lastError; // Suppress unchecked lastError warnings
       relayPort = null;
-      scheduleReconnect();
+      backoff.scheduleReconnect(openRelayPort);
     });
 
     // Background can push recording status through this port too
@@ -82,17 +81,8 @@ function openRelayPort(): void {
   } catch (err) {
     // Extension context might not be ready during very early page load
     console.debug('[CanvasLint:Content] Port open failed, will retry:', err);
-    scheduleReconnect();
+    backoff.scheduleReconnect(openRelayPort);
   }
-}
-
-function scheduleReconnect(): void {
-  if (reconnectTimer !== null) return; // already scheduled
-  reconnectTimer = setTimeout(() => {
-    reconnectTimer = null;
-    reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
-    openRelayPort();
-  }, reconnectDelay);
 }
 
 /** Send a relay batch — buffers if the port is temporarily down. */
@@ -104,7 +94,7 @@ function sendBatch(msg: RelayCommandBatchMessage): void {
     } catch {
       // Port may have died between the onDisconnect callback and here
       relayPort = null;
-      scheduleReconnect();
+      backoff.scheduleReconnect(openRelayPort);
     }
   }
   // Buffer while reconnecting (cap at 200 batches = ~3 s of 60fps canvas)

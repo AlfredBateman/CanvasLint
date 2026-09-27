@@ -27,22 +27,22 @@
 import { useEffect, useRef, useCallback } from 'react';
 import type React from 'react';
 import { usePanelStore } from './usePanelStore';
+import { createBackoff, type Backoff } from '../types/backoff';
 import type {
   PanelToWorkerMessage,
   WorkerToPanelMessage,
   PortMessage,
 } from '../types/messages';
 
-const MAX_RECONNECT_DELAY_MS = 8_000;
-
 export function useWorkerPort(): {
   sendToWorker: (msg: PanelToWorkerMessage) => void;
   portRef: React.RefObject<chrome.runtime.Port | null>;
 } {
   const portRef            = useRef<chrome.runtime.Port | null>(null);
-  const reconnectDelayRef  = useRef(250);
-  const reconnectTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const backoffRef         = useRef<Backoff | null>(null);
   const isMountedRef       = useRef(true);
+  if (backoffRef.current === null) backoffRef.current = createBackoff();
+  const backoff = backoffRef.current;
 
   const actions = usePanelStore((s) => s.actions);
 
@@ -90,7 +90,7 @@ export function useWorkerPort(): {
     try {
       const port = chrome.runtime.connect({ name: 'devtools' });
       portRef.current = port;
-      reconnectDelayRef.current = 250; // reset back-off on success
+      backoff.reset(); // reset back-off on success
 
       port.onMessage.addListener(handleWorkerMessage);
 
@@ -100,7 +100,7 @@ export function useWorkerPort(): {
         actions.setDisconnected();
 
         if (isMountedRef.current) {
-          scheduleReconnect();
+          backoff.scheduleReconnect(openPort);
         }
       });
 
@@ -113,21 +113,10 @@ export function useWorkerPort(): {
       console.debug('[CanvasLint:Panel] Port opened, DEVTOOLS_INIT sent.');
     } catch (err) {
       actions.setConnError(`Failed to open port: ${(err as Error).message}`);
-      scheduleReconnect();
+      backoff.scheduleReconnect(openPort);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handleWorkerMessage, actions]);
-
-  const scheduleReconnect = useCallback(() => {
-    if (reconnectTimerRef.current !== null) return;
-    const delay = reconnectDelayRef.current;
-    reconnectDelayRef.current = Math.min(delay * 2, MAX_RECONNECT_DELAY_MS);
-
-    reconnectTimerRef.current = setTimeout(() => {
-      reconnectTimerRef.current = null;
-      openPort();
-    }, delay);
-  }, [openPort]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -135,13 +124,11 @@ export function useWorkerPort(): {
 
     return () => {
       isMountedRef.current = false;
-      if (reconnectTimerRef.current !== null) {
-        clearTimeout(reconnectTimerRef.current);
-      }
+      backoff.cancel();
       portRef.current?.disconnect();
       portRef.current = null;
     };
-  }, [openPort]);
+  }, [openPort, backoff]);
 
   // ── Stable send helper ────────────────────────────────────────────────────
 
@@ -161,9 +148,9 @@ export function useWorkerPort(): {
       console.warn('[CanvasLint:Panel] postMessage failed:', err);
       portRef.current = null;
       actions.setDisconnected();
-      scheduleReconnect();
+      backoff.scheduleReconnect(openPort);
     }
-  }, [actions, scheduleReconnect]);
+  }, [actions, openPort, backoff]);
 
   return { sendToWorker, portRef };
 }
