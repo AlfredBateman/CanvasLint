@@ -142,6 +142,13 @@ function resolveStyle(
 function resetContext(ctx: CanvasRenderingContext2D): void {
   const { width, height } = ctx.canvas;
 
+  // Pop any dangling save() calls first, so nothing below gets overwritten
+  // by a restore(). restore() never throws; it's a no-op once the stack
+  // is empty.
+  for (let i = 0; i < 64; i++) ctx.restore();
+
+  ctx.resetTransform();
+
   // Pixel clear
   ctx.clearRect(0, 0, width, height);
 
@@ -165,15 +172,6 @@ function resetContext(ctx: CanvasRenderingContext2D): void {
   ctx.textBaseline             = 'alphabetic';
   ctx.imageSmoothingEnabled    = true;
   ctx.imageSmoothingQuality    = 'low';
-  ctx.resetTransform();
-
-  // Pop any dangling save() calls
-  // We can't know the depth directly — trick: save then restore-to-root
-  // via a try/restoreAll loop (Chrome/Firefox support this implicitly by
-  // just calling restore() until it no-ops).
-  try {
-    for (let i = 0; i < 64; i++) ctx.restore();
-  } catch { /* no-op when stack is empty */ }
 }
 
 // ─── Command executor (the switch) ────────────────────────────────────────────
