@@ -1,6 +1,6 @@
 {
   "name": "canvas-lint",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "CanvasLint — A DevTools browser extension for debugging HTML5 Canvas 2D rendering",
   "private": true,
   "scripts": {
