@@ -358,8 +358,18 @@ export function replayCommands(
   const limit = Math.min(endIndex, commands.length - 1);
 
   for (let i = 0; i <= limit; i++) {
-    const ok = executeCommand(ctx, commands[i], issues);
-    if (ok) executed++; else skipped++;
+    try {
+      const ok = executeCommand(ctx, commands[i], issues);
+      if (ok) executed++; else skipped++;
+    } catch (err) {
+      console.warn(`[CanvasLint] replay: skipping command at ${commands[i].index} (${commands[i].method})`, err);
+      issues.push({
+        kind:    'unknown-command',
+        message: `${commands[i].method} threw during replay and was skipped: ${err}`,
+        atIndex: commands[i].index,
+      });
+      skipped++;
+    }
   }
 
   return {

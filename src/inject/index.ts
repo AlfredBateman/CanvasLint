@@ -101,6 +101,10 @@ function getSerializedRef(obj: object): SerializedRef {
 function serializeArgs(args: any[]): any[] {
   return args.map((arg) => {
     if (arg === null || arg === undefined) return arg;
+    // Number arrays (e.g. setLineDash([4, 2])) structured-clone fine on
+    // their own; wrapping them as a ref breaks replay, which needs a real
+    // iterable array back.
+    if (Array.isArray(arg) && arg.every((item) => typeof item === 'number')) return arg;
     if (typeof arg === 'object' || typeof arg === 'function') return getSerializedRef(arg);
     return arg;
   });
