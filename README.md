@@ -1,5 +1,7 @@
 # CanvasLint
 
+[![GitHub release](https://img.shields.io/github/v/release/AlfredBateman/CanvasLint)](https://github.com/AlfredBateman/CanvasLint/releases)
+
 I wanted to scrub through Canvas 2D draw calls the way the Network panel lets
 you scrub through requests — pick a point in a page's rendering history and
 see exactly what the canvas looked like at that moment. This is a Manifest V3
@@ -9,6 +11,20 @@ slider through the command history.
 
 It is not an accessibility or DOM linter, despite the name — that's a leftover
 from an earlier scaffold this project was built on top of.
+
+---
+
+## Download & Install
+
+1. Download `canvas-lint-v1.0.0.zip` from the
+   [Releases page](https://github.com/AlfredBateman/CanvasLint/releases).
+2. Unzip it.
+3. Open `chrome://extensions` in Chrome.
+4. Enable **Developer mode** (top right toggle).
+5. Click **Load unpacked** and select the unzipped folder.
+
+This is mid-build software — see [Known limitations](#known-limitations)
+before relying on it for anything beyond casual debugging.
 
 ---
 
@@ -24,7 +40,7 @@ telemetry style, with honest empty states instead of placeholder content.
 
 ---
 
-## Install / build
+## Build from source
 
 Requires Node 18+.
 
