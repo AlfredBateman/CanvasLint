@@ -1,3 +1,5 @@
+Superseded planning notes; see README for current state.
+
 ================================================================================
 CANVAS-LINT: TECHNICAL ARCHITECTURE & INTERNAL MECHANICS
 ================================================================================
