@@ -38,12 +38,6 @@
 
   "devtools_page": "devtools/index.html",
 
-  "permissions": [
-    "activeTab",
-    "storage",
-    "scripting"
-  ],
-
   "host_permissions": [
     "<all_urls>"
   ],
